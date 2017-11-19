@@ -77,7 +77,24 @@ class SelectorBIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        best_score = float("Inf")
+        best_model = None
+
+        try:
+            for n_components in range(self.min_n_components, self.max_n_components + 1):
+                base_hmm = self.base_model(n_components)
+                logL = base_hmm.score(self.X, self.lengths)
+                logN = np.log(len(self.X))
+                n = n_components
+                p = n * n + 2 * n * len(self.X[0]) - 1
+                score = -2 * logL + p * logN
+
+                if score < best_score:
+                    best_score = score
+                    best_model = base_hmm
+            return best_model
+        except:
+            return self.base_model(self.n_constant)
 
 
 class SelectorDIC(ModelSelector):
@@ -94,7 +111,25 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        best_score = float("-Inf")
+        best_model = None
+
+        try:
+            for n_components in range(self.min_n_components, self.max_n_components + 1):
+                base_hmm = self.base_model(n_components)
+                score = base_hmm
+                scores = []
+                for word in self.words:
+                    if (word != self.this_word):
+                        x_word, word_len = self.hwords[word]
+                        scores.append(base_hmm.score(x_word, word_len))
+                dic_score = score - np.mean(base_hmm)
+                if dic_score > best_score:
+                    best_score = dic_score
+                    best_model = base_hmm
+            return best_model
+        except:
+            return self.base_model(self.n_constant)
 
 
 class SelectorCV(ModelSelector):
@@ -106,4 +141,26 @@ class SelectorCV(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection using CV
-        raise NotImplementedError
+        best_score = float("-Inf")
+        best_model = None
+        splits = min(3, len(self.sequences))
+
+        try:
+            for n_components in range(self.min_n_components, self.max_n_components + 1):
+                kf = KFold(n_splits=splits, random_state=self.random_state)
+                scores = []
+                for train_idx, test_idx in kf.split(self.sequences):
+                    x_train, train_len = combine_sequences(train_idx, self.sequences)
+                    base_hmm = GaussianHMM(n_components=n_components, covariance_type="diag", n_iter=1000,
+                                    random_state=self.random_state, verbose=False).fit(x_train, train_len)
+                    x_test, test_len = combine_sequences(test_idx, self.sequences)
+                    logL = base_hmm.score(x_test, test_len)
+                    scores.append(logL)
+                score = np.average(scores)
+                if score > best_score:
+                    best_score = score
+                    best_model = base_hmm
+            return best_model
+        except:
+            return self.base_model(self.n_constant)
+
